@@ -1,0 +1,1 @@
+This folder contains synthetic demonstration data for illustrating the evaluation workflow. Values are for reproducibility only and do not represent real study outputs or expert ratings.
