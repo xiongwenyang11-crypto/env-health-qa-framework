@@ -1,139 +1,140 @@
-# Method Overview
+## Method Overview
 
 This document provides a high-level overview of the design rationale and methodological structure of the interpretable environmental health question-answering framework implemented in this repository.
 
-The goal of the framework is to support transparent, evidence-based synthesis of environmental health literature, with explicit uncertainty representation and full traceability to source evidence.
-
----
+The framework is designed to support transparent, evidence-centered synthesis of environmental health literature, with explicit uncertainty representation and full traceability to source evidence, consistent with the accompanying manuscript.
 
 ## Design Principles
 
 The framework is guided by the following core principles:
 
-1. **Evidence-driven reasoning**  
-   All generated answers are grounded in retrieved literature evidence rather than free-form text generation.
+Evidence-centered reasoning
+All system outputs are grounded in explicitly retrieved literature evidence rather than unconstrained text generation.
 
-2. **Interpretability over black-box prediction**  
-   Each stage of the pipeline is explicitly defined and inspectable, avoiding opaque end-to-end models.
+Interpretability over black-box prediction
+Each stage of the pipeline is explicitly defined and inspectable, avoiding opaque end-to-end models.
 
-3. **Traceability and transparency**  
-   Users can trace system outputs back to specific studies and text snippets.
+Traceability and transparency
+Users can trace system outputs to specific source studies and text passages.
 
-4. **Explicit uncertainty representation**  
-   Confidence levels are treated as first-class outputs rather than implicit by-products.
+Explicit uncertainty representation
+Qualitative confidence levels are treated as first-class outputs rather than implicit by-products.
 
-5. **Reproducibility**  
-   The system is implemented using standard, widely available Python libraries and includes demonstration datasets to support reproducibility.
-
----
+Reproducibility
+The system relies on deterministic methods and standard Python libraries, with demonstration datasets provided to support reproducibility.
 
 ## System Architecture
 
-The framework follows a modular pipeline architecture consisting of four main components:
+The framework follows a modular, query-driven pipeline architecture consisting of four core components:
 
-1. Evidence Retrieval  
-2. Extractive Summarization  
-3. Uncertainty Calibration  
-4. Evaluation and Validation  
+Knowledge Representation and Curation
+
+Evidence Retrieval
+
+Interpretable Reasoning with Uncertainty Calibration
+
+Evaluation and Interactive Inspection
 
 Each component is implemented as an independent module to support clarity, extensibility, and reproducibility.
-
----
 
 ## Evidence Retrieval
 
 The retrieval module identifies literature relevant to a user’s natural-language query.
 
-- Texts are indexed using a TF–IDF vector representation.
-- Cosine similarity is used to rank documents by relevance.
-- The top-*k* documents are returned along with similarity scores.
+Documents are indexed using TF–IDF vector representations.
 
-This design prioritizes interpretability and reproducibility over complex neural retrieval models, which may obscure how relevance scores are produced.
+Cosine similarity is used to rank documents by relevance.
 
-For demonstration purposes, retrieval is performed at the document level. The architecture can be extended to sentence- or paragraph-level retrieval in future work.
+The top-k documents (k = 3 in the reported study) are returned together with similarity scores and structured metadata.
 
----
+This design prioritizes interpretability and deterministic behavior over complex neural retrieval models that may obscure how relevance scores are produced.
 
-## Extractive Summarization
+For demonstration purposes, retrieval is performed at the document level. The architecture is extensible to sentence- or paragraph-level retrieval in future work.
 
-Retrieved documents are summarized using a query-aware extractive approach:
+## Interpretable Extractive Reasoning
 
-- Documents are split into sentences using lightweight rule-based segmentation.
-- Sentences are scored based on lexical overlap with query terms.
-- Top-ranked sentences across retrieved documents are selected to form the final summary.
+Retrieved documents are summarized using a query-aware extractive aggregation strategy designed to preserve traceability.
 
-This extractive strategy ensures that summaries remain faithful to the source texts and supports direct traceability between the generated answer and the underlying evidence.
+Each retrieved document is segmented into sentences using lightweight rule-based procedures.
 
----
+Sentence-level TF–IDF cosine similarity scores are computed between the query and all sentences within each document.
+
+Exactly one sentence (n = 1) is selected per retrieved document, corresponding to the highest-scoring sentence for that document.
+
+This one-to-one correspondence between documents and extracted sentences ensures that each summarized statement can be directly traced to a specific source study and limits over-synthesis across heterogeneous evidence.
 
 ## Uncertainty Calibration
 
-To represent uncertainty explicitly, retrieval similarity scores are transformed into qualitative confidence levels.
+Uncertainty is represented using qualitative confidence levels derived from retrieval-based evidence support signals.
 
-The calibration process includes:
-1. Optional min–max normalization of similarity scores.
-2. Sigmoid-based transformation to smooth score distributions.
-3. Threshold-based mapping into three qualitative levels:
-   - **Low**
-   - **Medium**
-   - **High**
+The calibration procedure follows three deterministic steps:
 
-Each retrieved evidence item receives a confidence label, and an overall confidence level is derived for the final answer (e.g., based on the top-ranked evidence).
+Min–max normalization of document-level similarity scores from the top-k retrieved studies.
 
-This approach provides an interpretable approximation of uncertainty aligned with expert judgment, rather than probabilistic claims.
+Aggregation using the arithmetic mean to produce a single query-level evidence support indicator.
 
----
+Threshold-based mapping of the aggregated score into three ordinal categories:
+
+Low
+
+Medium
+
+High
+
+Thresholds are fixed prior to evaluation and applied uniformly across all queries.
+
+This approach provides an interpretable proxy for relative evidence support, rather than probabilistic estimates of correctness, effect size, or causal certainty.
 
 ## Evaluation Strategy
 
-The evaluation framework is designed to assess both factual correctness and interpretability.
+The evaluation framework assesses both factual consistency and interpretability of system outputs.
 
 Key evaluation dimensions include:
 
-- **Citation precision@k**  
-  Proportion of relevant studies among the top-*k* retrieved items.
+Citation precision@k
+Proportion of expert-judged relevant studies among the top-k retrieved documents.
 
-- **Factuality**  
-  Binary expert judgment of whether the generated summary is consistent with the cited evidence.
+Factual consistency
+Expert judgment using a three-level ordinal scale (0–2) reflecting incorrect, partially consistent, or fully consistent summaries.
 
-- **Interpretability**  
-  Expert-rated clarity and transparency of system outputs using a Likert scale.
+Interpretability
+Expert-rated clarity and transparency using a 5-point Likert scale.
 
-- **Uncertainty alignment**  
-  Agreement between system-assigned confidence levels and expert-perceived confidence.
+Uncertainty alignment
+Agreement between system-assigned qualitative confidence and expert-perceived confidence, assessed using weighted Cohen’s κ.
 
-- **Inter-rater agreement**  
-  Pairwise Cohen’s κ is used to quantify consistency among expert reviewers.
+Inter-rater agreement
+Reported descriptively to contextualize expert judgment variability.
 
-Synthetic demonstration data are used in this repository to illustrate the evaluation workflow. Real expert ratings and literature data are not redistributed.
-
----
+Synthetic demonstration data included in this repository are used solely to illustrate evaluation logic and metric computation.
 
 ## Demonstration Data vs. Real Literature
 
-This repository includes small, synthetic demonstration datasets intended solely to illustrate the pipeline and evaluation procedures.
+This repository includes synthetic demonstration datasets intended to illustrate the pipeline and evaluation procedures.
 
-- The **demo corpus** does not represent the full literature used in the study.
-- Texts are simplified or synthetic to avoid copyright restrictions.
-- Evaluation CSV files contain synthetic expert ratings for reproducibility only.
+Demonstration texts do not represent the full literature used in the study.
 
-The structure of the code and data schemas is designed to support seamless substitution with real literature and expert evaluations in future work.
+Text content is simplified or synthetic to avoid copyright restrictions.
 
----
+Evaluation CSV files contain synthetic expert ratings for reproducibility only.
+
+The data schemas and code structure support direct substitution with real literature and expert evaluations.
 
 ## Scope and Extensions
 
 This implementation represents a proof-of-concept framework rather than a production system.
 
 Planned extensions include:
-- Large-scale literature databases
-- Embedding-based retrieval
-- Automated entity recognition
-- Integration with more advanced language model reasoning modules
+
+Integration with large-scale bibliographic databases
+
+Embedding-based retrieval backends
+
+Automated entity recognition
+
+Citation-constrained generative reasoning modules
 
 These extensions are intentionally beyond the scope of the current implementation and manuscript.
-
----
 
 ## Intended Use
 

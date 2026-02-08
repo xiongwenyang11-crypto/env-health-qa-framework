@@ -1,20 +1,30 @@
 """
 uncertainty.labeling
 
-Mapping calibrated confidence scores to qualitative labels:
+Manuscript-aligned mapping from retrieval similarity support to qualitative labels:
 - Low / Medium / High
 
-Also provides helpers to annotate retrieved results tables.
+In the manuscript, uncertainty is computed at the *query level*:
+1) Take similarity scores from top-k retrieved documents
+2) Min–max normalize to [0,1]
+3) Aggregate with arithmetic mean -> evidence support indicator
+4) Apply fixed thresholds (t1, t2) -> Low/Medium/High
+
+This module provides:
+- score_to_label: map support indicator to label (Low/Medium/High)
+- annotate_retrieval_df: optional per-document normalized scores for inspection
+- compute_overall_confidence_from_retrieval: primary query-level confidence computation
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Sequence, Union, Optional, Literal
+from typing import Sequence, Union, Optional, Literal, Tuple
 
 import numpy as np
 import pandas as pd
 
-from .calibration import calibrate_scores
+from .calibration import minmax_normalize, aggregate_evidence_support, map_support_to_confidence
 
 
 ConfidenceLabel = Literal["Low", "Medium", "High"]
@@ -23,64 +33,39 @@ ConfidenceLabel = Literal["Low", "Medium", "High"]
 @dataclass(frozen=True)
 class ConfidenceConfig:
     """
-    Configuration for confidence calibration and labeling.
+    Configuration for qualitative uncertainty labeling (manuscript-aligned).
     """
     normalize: bool = True
-    a: float = 10.0
-    b: float = 0.5
-    t_low: float = 0.33
-    t_high: float = 0.67
+    t1: float = 0.33
+    t2: float = 0.67
 
 
-def score_to_label(p: float, t_low: float = 0.33, t_high: float = 0.67) -> ConfidenceLabel:
+def score_to_label(support: float, *, t1: float, t2: float) -> ConfidenceLabel:
     """
-    Convert a calibrated score to a qualitative confidence label.
+    Convert an evidence-support indicator to a qualitative confidence label.
     """
-    if p < t_low:
+    label = map_support_to_confidence(support, t1=t1, t2=t2)
+    # map_support_to_confidence may return "" if NaN; default to Low for robustness
+    if label == "":
         return "Low"
-    if p < t_high:
-        return "Medium"
-    return "High"
-
-
-def label_scores(
-    scores: Sequence[Union[int, float]],
-    *,
-    config: ConfidenceConfig = ConfidenceConfig(),
-) -> np.ndarray:
-    """
-    Calibrate and label a list of raw scores.
-
-    Returns:
-        array of labels, same length as scores
-    """
-    calibrated = calibrate_scores(
-        scores,
-        normalize=config.normalize,
-        a=config.a,
-        b=config.b,
-    )
-    labels = np.array([score_to_label(float(p), config.t_low, config.t_high) for p in calibrated], dtype=object)
-    return labels
+    return label  # type: ignore
 
 
 def annotate_retrieval_df(
     retrieved_df: pd.DataFrame,
     *,
     similarity_col: str = "similarity",
-    out_score_col: str = "calibrated_score",
-    out_label_col: str = "confidence",
+    out_norm_col: str = "similarity_norm",
     config: ConfidenceConfig = ConfidenceConfig(),
 ) -> pd.DataFrame:
     """
-    Given a retrieval output DataFrame with a similarity column,
-    add calibrated_score and confidence label columns.
+    Optional helper to annotate a retrieval output DataFrame with per-document
+    normalized similarity scores (for inspection/visualization).
 
-    Expected:
-        retrieved_df[similarity_col] exists
+    This does NOT define the manuscript's query-level confidence by itself.
 
     Returns:
-        copy of DataFrame with extra columns.
+        Copy of DataFrame with an added normalized similarity column.
     """
     if similarity_col not in retrieved_df.columns:
         raise ValueError(f"Missing column '{similarity_col}' in retrieved_df.")
@@ -88,54 +73,51 @@ def annotate_retrieval_df(
     df = retrieved_df.copy()
     raw = df[similarity_col].to_numpy(dtype=float)
 
-    calibrated = calibrate_scores(
-        raw,
-        normalize=config.normalize,
-        a=config.a,
-        b=config.b,
-    )
+    if config.normalize:
+        df[out_norm_col] = minmax_normalize(raw)
+    else:
+        df[out_norm_col] = raw
 
-    df[out_score_col] = calibrated
-    df[out_label_col] = [score_to_label(float(p), config.t_low, config.t_high) for p in calibrated]
     return df
 
 
-def overall_confidence(
+def compute_support_indicator(
     retrieved_df: pd.DataFrame,
     *,
-    label_col: str = "confidence",
-    rank_col: str = "rank",
-    method: str = "top1",
-) -> ConfidenceLabel:
+    similarity_col: str = "similarity",
+    config: ConfidenceConfig = ConfidenceConfig(),
+) -> float:
     """
-    Derive a single overall confidence label for the final answer.
-
-    Args:
-        retrieved_df: retrieval table that has a confidence label per row
-        method:
-            - "top1": use confidence label of the top-ranked evidence (default)
-            - "majority": majority vote among evidence confidence labels
+    Compute the manuscript-aligned evidence-support indicator for a query
+    from a retrieval table's similarity scores.
 
     Returns:
-        One of "Low" / "Medium" / "High"
+        support indicator in [0,1] (NaN if empty)
     """
-    if label_col not in retrieved_df.columns:
-        raise ValueError(f"Missing column '{label_col}' in retrieved_df.")
+    if similarity_col not in retrieved_df.columns:
+        raise ValueError(f"Missing column '{similarity_col}' in retrieved_df.")
 
-    if len(retrieved_df) == 0:
-        return "Low"
+    scores = retrieved_df[similarity_col].to_numpy(dtype=float)
+    return aggregate_evidence_support(scores, normalize=config.normalize)
 
-    if method == "top1":
-        if rank_col in retrieved_df.columns:
-            top = retrieved_df.sort_values(rank_col).iloc[0][label_col]
-        else:
-            top = retrieved_df.iloc[0][label_col]
-        return top  # type: ignore
 
-    if method == "majority":
-        vc = retrieved_df[label_col].value_counts()
-        if vc.empty:
-            return "Low"
-        return vc.idxmax()  # type: ignore
+def compute_overall_confidence_from_retrieval(
+    retrieved_df: pd.DataFrame,
+    *,
+    similarity_col: str = "similarity",
+    config: ConfidenceConfig = ConfidenceConfig(),
+) -> Tuple[float, ConfidenceLabel]:
+    """
+    Primary manuscript-aligned function:
+    retrieval_df -> (support_indicator, qualitative_confidence)
 
-    raise ValueError(f"Unknown method: {method}")
+    Returns:
+        (support, label)
+    """
+    support = compute_support_indicator(
+        retrieved_df,
+        similarity_col=similarity_col,
+        config=config,
+    )
+    label = score_to_label(support, t1=config.t1, t2=config.t2)
+    return support, label

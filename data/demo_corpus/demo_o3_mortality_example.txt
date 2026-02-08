@@ -1,0 +1,22 @@
+[SYNTHETIC DEMONSTRATION TEXT — NOT A REAL STUDY]
+
+Study information (synthetic example):
+Study design: Time-series study (synthetic)
+Region: North America (illustrative)
+Year: 2020 (illustrative)
+
+Population:
+Synthetic description of residents across multiple metropolitan areas, representing the general population.
+
+Exposure:
+Illustrative example of short-term ambient ozone (O3) exposure, described using daily average concentrations from fixed-site monitoring networks.
+
+Health outcome:
+Example outcomes related to cardiorespiratory mortality (e.g., daily deaths attributed to cardiovascular and respiratory causes).
+
+Key findings (synthetic summary):
+In this synthetic example, short-term increases in ambient O3 concentrations are described as being associated with higher rates of cardiorespiratory mortality.
+The association is described as more evident during warmer seasons and in areas with higher baseline pollution levels.
+
+Conclusion (illustrative):
+This synthetic example illustrates how ozone exposure may be discussed as being associated with increased cardiorespiratory mortality in environmental health literature, while providing a structured text format for demonstrating retrieval, extractive summarization, and evidence traceability workflows.

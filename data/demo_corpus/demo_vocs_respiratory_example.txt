@@ -1,0 +1,22 @@
+[SYNTHETIC DEMONSTRATION TEXT — NOT A REAL STUDY]
+
+Study information (synthetic example):
+Study design: Cross-sectional observational study (synthetic)
+Region: Urban regions across multiple countries (illustrative)
+Year: 2018 (illustrative)
+
+Population:
+Synthetic description of adult residents living in urban environments with diverse occupational and residential exposure backgrounds.
+
+Exposure:
+Illustrative example of exposure to volatile organic compounds (VOCs), described using ambient monitoring data and indoor air sampling indicators.
+
+Health outcome:
+Example outcomes related to respiratory irritation and inflammatory responses, including reported airway symptoms and biomarkers of respiratory inflammation.
+
+Key findings (synthetic summary):
+In this synthetic example, higher VOC exposure levels are described as being associated with increased reports of respiratory irritation and markers of airway inflammation.
+The associations are described as more pronounced among individuals with pre-existing respiratory conditions and in settings with poor indoor ventilation.
+
+Conclusion (illustrative):
+This synthetic example illustrates how VOC exposures may be discussed in relation to respiratory irritation and inflammatory outcomes in environmental health literature, serving as a structured demonstration for evidence retrieval, extractive summarization, and uncertainty-aware interpretation.

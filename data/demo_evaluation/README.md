@@ -1,1 +1,3 @@
-This folder contains synthetic demonstration data for illustrating the evaluation workflow. Values are for reproducibility only and do not represent real study outputs or expert ratings.
+This folder contains synthetic demonstration data used to illustrate the evaluation workflow of the interpretable environmental health question-answering framework.
+All values are synthetic and provided solely for demonstrating data schemas, metric computation, and reproducibility.
+They do not correspond to the literature corpus, expert evaluations, or quantitative results reported in the accompanying manuscript.

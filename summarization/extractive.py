@@ -1,21 +1,28 @@
 """
 summarization.extractive
 
-Query-aware extractive summarization:
-- Split retrieved text(s) into sentences
-- Score each sentence by overlap with query terms
-- Select top-N sentences as the extractive summary
+Manuscript-aligned query-aware extractive summarization:
+
+For each of the top-k retrieved documents:
+- Split the document text into sentences
+- Score each sentence by TF–IDF cosine similarity to the query
+- Select the single highest-scoring sentence (n = 1 per document)
+
+The final summary concatenates at most one sentence per document to preserve
+traceability and avoid over-synthesis across heterogeneous sources.
 
 This is a proof-of-concept implementation intended for reproducibility.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional
 
-import re
+from dataclasses import dataclass
+from typing import List, Tuple, Optional
+
 import numpy as np
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 from .sentence_split import sent_tokenize_simple
 
@@ -32,21 +39,61 @@ class SummarySentence:
     doc_similarity: float
 
 
-def _normalize_terms(s: str) -> List[str]:
-    s = s.lower()
-    # keep letters/numbers; replace others with space
-    s = re.sub(r"[^a-z0-9\s\-\.]", " ", s)
-    terms = [t for t in s.split() if len(t) > 2]
-    return terms
+def _fit_sentence_vectorizer(sentences: List[str]) -> TfidfVectorizer:
+    """
+    Fit a lightweight TF–IDF vectorizer over candidate sentences.
+
+    Kept intentionally simple and deterministic for reproducibility.
+    Uses unigrams + english stopwords + L2 norm, consistent with manuscript.
+    """
+    v = TfidfVectorizer(
+        lowercase=True,
+        stop_words="english",
+        ngram_range=(1, 1),
+        norm="l2",
+    )
+    # If all sentences are empty/stopwords, sklearn may error; guard upstream.
+    v.fit(sentences)
+    return v
 
 
-def _score_sentence(sentence: str, query_terms: set) -> float:
-    sent_terms = set(_normalize_terms(sentence))
-    if not sent_terms:
-        return 0.0
-    overlap = len(sent_terms.intersection(query_terms))
-    # simple length normalization
-    return float(overlap / np.sqrt(len(sent_terms)))
+def _best_sentence_for_doc(
+    query: str,
+    text: str,
+    *,
+    min_sent_score: float = 0.0,
+) -> Tuple[Optional[str], float]:
+    """
+    Select the single best sentence from a document based on TF–IDF cosine similarity.
+
+    Returns:
+        (best_sentence, best_score)
+    """
+    sents = [s.strip() for s in sent_tokenize_simple(text) if s and s.strip()]
+    if not sents:
+        return None, 0.0
+
+    # Fit TF–IDF on sentences (document-internal scoring)
+    try:
+        v = _fit_sentence_vectorizer(sents + [query])
+    except ValueError:
+        # Happens if vocabulary is empty after stopword removal
+        return None, 0.0
+
+    sent_X = v.transform(sents)
+    q_X = v.transform([query])
+
+    sims = cosine_similarity(q_X, sent_X).ravel()
+    if sims.size == 0:
+        return None, 0.0
+
+    best_idx = int(np.argmax(sims))
+    best_score = float(sims[best_idx])
+
+    if best_score <= min_sent_score:
+        return None, best_score
+
+    return sents[best_idx], best_score
 
 
 def summarize_retrieved(
@@ -57,11 +104,11 @@ def summarize_retrieved(
     doc_id_col: str = "doc_id",
     title_col: str = "title",
     similarity_col: str = "similarity",
-    top_n_sentences: int = 3,
+    per_doc_n: int = 1,
     min_sent_score: float = 0.0,
 ) -> Tuple[str, pd.DataFrame]:
     """
-    Generate an extractive summary from retrieved documents (DataFrame).
+    Generate a manuscript-aligned extractive summary from retrieved documents.
 
     Expected retrieved_df columns (by default):
         - doc_id
@@ -69,54 +116,68 @@ def summarize_retrieved(
         - similarity
         - text
 
+    Behavior:
+        - Select at most `per_doc_n` sentence(s) per document (default 1).
+        - Preserves a one-to-one mapping between summarized statements and source docs.
+
     Returns:
-        summary_text: concatenated top sentences
-        selected_sentences_df: DataFrame with traceability columns
+        summary_text: concatenated selected sentences (doc order follows retrieval rank if present)
+        selected_sentences_df: DataFrame with traceability columns:
             doc_id, title, similarity, sentence, sent_score
     """
     if retrieved_df is None or len(retrieved_df) == 0:
         return "No retrieved evidence available for summarization.", pd.DataFrame()
 
-    for c in [doc_id_col, title_col, similarity_col, text_col]:
+    for c in (doc_id_col, title_col, similarity_col, text_col):
         if c not in retrieved_df.columns:
             raise ValueError(f"Missing column '{c}' in retrieved_df.")
 
-    q_terms = set(_normalize_terms(query))
-    candidates: List[SummarySentence] = []
+    if per_doc_n != 1:
+        # Keep the API explicit: manuscript uses n=1 per document.
+        # Allow changing only if intentionally experimenting.
+        raise ValueError("per_doc_n must be 1 in the manuscript-aligned implementation.")
 
-    for _, r in retrieved_df.iterrows():
-        doc_id = str(r[doc_id_col])
-        title = str(r[title_col])
-        sim = float(r[similarity_col])
-        text = str(r[text_col]) if pd.notna(r[text_col]) else ""
+    rows: List[SummarySentence] = []
 
-        for sent in sent_tokenize_simple(text):
-            sc = _score_sentence(sent, q_terms)
-            if sc > min_sent_score:
-                candidates.append(
-                    SummarySentence(
-                        doc_id=doc_id,
-                        title=title,
-                        sentence=sent,
-                        sent_score=sc,
-                        doc_similarity=sim,
-                    )
-                )
+    # Preserve retrieval order if `rank` exists; otherwise keep row order
+    if "rank" in retrieved_df.columns:
+        doc_iter = retrieved_df.sort_values("rank").itertuples(index=False)
+    else:
+        doc_iter = retrieved_df.itertuples(index=False)
 
-    if not candidates:
-        return "No overlapping evidence sentences found for this query.", pd.DataFrame()
+    for r in doc_iter:
+        # Access by attribute names (safe with itertuples)
+        doc_id = str(getattr(r, doc_id_col))
+        title = str(getattr(r, title_col))
+        doc_sim = float(getattr(r, similarity_col))
+        text = getattr(r, text_col)
+        text = "" if pd.isna(text) else str(text)
 
-    # Rank primarily by sentence score, secondarily by doc similarity
-    cdf = pd.DataFrame([{
-        "doc_id": c.doc_id,
-        "title": c.title,
-        "similarity": c.doc_similarity,
-        "sentence": c.sentence,
-        "sent_score": c.sent_score,
-    } for c in candidates])
+        best_sent, best_sc = _best_sentence_for_doc(query, text, min_sent_score=min_sent_score)
+        if best_sent is None:
+            continue
 
-    cdf = cdf.sort_values(["sent_score", "similarity"], ascending=False)
+        rows.append(
+            SummarySentence(
+                doc_id=doc_id,
+                title=title,
+                sentence=best_sent,
+                sent_score=float(best_sc),
+                doc_similarity=doc_sim,
+            )
+        )
 
-    selected = cdf.head(top_n_sentences).reset_index(drop=True)
-    summary_text = " ".join(selected["sentence"].tolist())
-    return summary_text, selected
+    if not rows:
+        return "No query-relevant sentences were found in the retrieved evidence.", pd.DataFrame()
+
+    out_df = pd.DataFrame([{
+        "doc_id": s.doc_id,
+        "title": s.title,
+        "similarity": s.doc_similarity,
+        "sentence": s.sentence,
+        "sent_score": s.sent_score,
+    } for s in rows])
+
+    # For transparency, keep document order as retrieved; do not re-rank across documents
+    summary_text = " ".join(out_df["sentence"].tolist())
+    return summary_text, out_df

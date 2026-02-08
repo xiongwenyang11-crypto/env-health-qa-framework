@@ -1,174 +1,188 @@
-# Evaluation Protocol
+## Evaluation Protocol
 
-This document describes the evaluation protocol used to assess the proposed interpretable environmental health question-answering framework.
+This document describes the evaluation protocol used to assess the proposed interpretable, evidence-centered environmental health question-answering framework.
 
-The protocol is designed to evaluate not only retrieval performance, but also factual correctness, interpretability, and the appropriateness of uncertainty representation.
-
----
+The protocol is designed to evaluate not only evidence retrieval behavior, but also factual consistency, interpretability, citation traceability, and qualitative uncertainty alignment, consistent with the methodology reported in the accompanying manuscript.
 
 ## Evaluation Objectives
 
-The evaluation aims to answer the following questions:
+The evaluation addresses the following questions:
 
-1. Does the system retrieve relevant literature evidence for a given query?
-2. Are the generated summaries factually consistent with the cited evidence?
-3. Are system outputs interpretable and transparent to expert users?
-4. Do system-assigned confidence levels align with expert judgment?
-5. Is there reasonable agreement among expert reviewers?
+Does the system retrieve literature evidence relevant to a given pollutant–health query?
 
----
+Are the generated summaries factually consistent with the cited evidence?
+
+Are system outputs interpretable and transparent to domain experts?
+
+Do system-assigned qualitative confidence levels align with expert judgment?
+
+Is expert evaluation reasonably consistent across reviewers?
 
 ## Evaluation Scenarios
 
-A set of representative pollutant–health query scenarios is defined to cover diverse exposure types and health outcomes.
+A set of representative pollutant–health query scenarios is defined to span diverse exposure types and health outcomes.
 
 Each scenario consists of:
-- A natural-language query
-- A target pollutant
-- A target health outcome
 
-In this repository, a small number of **synthetic demonstration scenarios** are provided to illustrate the evaluation workflow.
+A natural-language query
 
----
+A target pollutant
+
+A target health outcome
+
+In this repository, synthetic demonstration scenarios are provided solely to illustrate the evaluation workflow and metric computation. These scenarios do not represent the full evaluation dataset reported in the manuscript.
 
 ## Evidence Retrieval Evaluation
-
-### Citation Precision@k
+Citation Precision@k
 
 Retrieval performance is assessed using citation precision@k, defined as:
 
-> The proportion of relevant studies among the top-*k* retrieved items.
+The proportion of expert-judged relevant studies among the top-k retrieved documents.
 
-For each scenario:
-- Retrieved evidence items are labeled as relevant (1) or not relevant (0) by expert reviewers.
-- Precision@k is computed as the mean of these relevance labels.
+For each query scenario:
 
-This metric reflects the system’s ability to prioritize relevant literature for downstream reasoning and summarization.
+Retrieved documents are independently labeled by experts as relevant (1) or not relevant (0).
 
----
+Precision@k is computed as the mean of relevance labels among the top-k documents.
+
+In the reported study, k = 3, reflecting a balance between evidence diversity and expert inspectability.
 
 ## Expert Review Process
+Expert Panel
 
-### Expert Panel
+System outputs are independently reviewed by ten external domain experts with complementary expertise spanning environmental health, public health, and related disciplines.
 
-System outputs are independently reviewed by three domain experts with expertise in environmental health research.
+Experts:
 
-Experts are blinded to each other’s assessments and evaluate system outputs independently.
+Are external to the author team
 
----
+Declare no conflicts of interest
 
-### Evaluation Dimensions
+Review all outputs independently
 
-Experts assess each system output across the following dimensions:
+Are blinded to internal retrieval scores and uncertainty calibration rules
 
-#### 1. Factuality
+## Evaluation Dimensions
 
-- Binary judgment (0 / 1)
-- Indicates whether the generated summary is factually consistent with the cited evidence.
+Experts assess each system output along the following dimensions:
 
-#### 2. Interpretability
+1. Factual Consistency
 
-- Rated on a 5-point Likert scale
-- Reflects clarity, transparency, and ease of understanding of system outputs, including:
-  - Evidence presentation
-  - Confidence labeling
-  - Traceability to source studies
+Three-level ordinal scale:
 
-#### 3. Perceived Confidence
+0 = incorrect or unsupported by the cited evidence
 
-- Categorical judgment: **Low**, **Medium**, or **High**
-- Represents the expert’s perception of evidence strength and consistency.
+1 = broadly consistent but incomplete or missing key qualifiers
 
----
+2 = fully consistent with the cited evidence
+
+This scale reflects graded factual alignment rather than binary correctness.
+
+2. Interpretability
+
+Rated on a 5-point Likert scale
+
+Assesses clarity, transparency, and ease of inspection, including:
+
+Evidence presentation
+
+Citation traceability
+
+Confidence labeling
+
+3. Expert-Perceived Confidence
+
+Ordinal categorical judgment:
+
+Low, Medium, or High
+
+Reflects the expert’s assessment of the strength, consistency, and adequacy of the supporting evidence.
 
 ## Uncertainty Alignment
+## System Confidence Assignment
 
-System-assigned confidence levels are compared with expert-perceived confidence levels.
+System-assigned qualitative confidence levels are derived from retrieval-based evidence support signals, following the procedure described in the manuscript:
 
-### System Confidence Assignment
+Document-level similarity scores from the top-k retrieved studies are normalized using min–max normalization.
 
-- Retrieval similarity scores are calibrated using a sigmoid-based transformation.
-- Scores are mapped to qualitative levels:
-  - Low
-  - Medium
-  - High
+Normalized scores are aggregated using their arithmetic mean.
 
-An overall system confidence level is derived per scenario, typically based on the top-ranked evidence.
+Two predefined thresholds (fixed prior to evaluation) map the aggregated score to:
 
----
+Low
 
-### Expert Confidence Aggregation
+Medium
 
-- For each scenario, expert confidence labels are aggregated using majority vote.
-- This aggregated label represents the expert consensus confidence level.
+High confidence
 
----
+This procedure is deterministic and reproducible and is intended as an interpretable proxy for relative evidence support rather than probabilistic calibration.
 
-### Alignment Metric
+## Expert Confidence Aggregation
 
-Uncertainty alignment is defined as:
+Expert-perceived confidence labels are aggregated per query using majority voting.
 
-> Exact agreement between the system-assigned confidence label and the expert majority confidence label.
+The resulting label represents expert consensus confidence.
 
-Alignment is reported as:
-- Per-scenario agreement (0 / 1)
-- Overall alignment rate across scenarios
+## Alignment Metric
 
----
+Alignment between system-assigned and expert-perceived confidence is assessed using weighted Cohen’s κ with linear weights, reflecting ordinal agreement.
+
+κ is interpreted as a measure of interpretability alignment, not predictive accuracy or statistical calibration.
 
 ## Inter-Rater Agreement
 
-To assess consistency among expert reviewers, inter-rater agreement is quantified using **pairwise Cohen’s κ**.
+Consistency among expert reviewers is summarized descriptively.
 
-- Cohen’s κ is computed for each pair of experts.
-- Mean κ values are reported to summarize agreement.
+Inter-rater agreement is assessed using Cohen’s κ for selected evaluation dimensions.
 
-Interpretation follows standard guidelines:
-- κ < 0.40: low agreement
-- 0.40 ≤ κ < 0.60: moderate agreement
-- 0.60 ≤ κ < 0.80: substantial agreement
-- κ ≥ 0.80: near-perfect agreement
-
----
+Agreement statistics are reported to contextualize expert judgment variability rather than to support inferential claims.
 
 ## Statistical Reporting
 
-Evaluation results are summarized using:
+Evaluation outcomes are summarized using descriptive statistics:
 
-- Mean ± standard deviation for continuous measures
-- Proportions for binary and categorical measures
+Mean ± standard deviation for ordinal or continuous measures
 
-Non-parametric statistical tests (e.g., Wilcoxon signed-rank test) may be used for exploratory comparisons where appropriate.
+Proportions for categorical measures
 
----
+No hypothesis testing or inferential statistical claims are made, consistent with the proof-of-concept scope.
 
 ## Demonstration Data and Reproducibility
 
-The evaluation workflow provided in this repository uses **synthetic demonstration data** stored in CSV format.
+The repository includes synthetic demonstration data (CSV format) to illustrate:
 
-- Demonstration data illustrate evaluation logic and metric computation.
-- Values do not represent real expert judgments or real study outputs.
-- Full literature texts and real expert ratings are not redistributed due to copyright and privacy considerations.
+Metric computation
 
-The data schema is designed to support seamless substitution with real evaluation data.
+Evaluation logic
 
----
+Data schema
+
+These data:
+
+Do not represent real expert judgments
+
+Do not contain real study outputs
+
+Are not used for any results reported in the manuscript
+
+The schema supports direct substitution with real evaluation data.
 
 ## Scope and Limitations
 
-The evaluation protocol is designed for proof-of-concept validation.
+This evaluation protocol is designed for methodological demonstration rather than generalizable performance benchmarking.
 
 Limitations include:
-- Small number of scenarios
-- Synthetic demonstration data
-- Focus on expert-based evaluation rather than end-user usability testing
 
-These limitations are addressed in the accompanying manuscript and motivate future system extensions.
+A limited number of demonstration scenarios
 
----
+Use of synthetic data in the repository
+
+Focus on expert-based evaluation rather than end-user usability testing
+
+These limitations are discussed in detail in the manuscript and motivate future extensions.
 
 ## Intended Interpretation
 
-Evaluation results should be interpreted as evidence of **methodological feasibility and transparency**, rather than as definitive performance benchmarks.
+Evaluation results should be interpreted as evidence of methodological feasibility, transparency, and interpretability, rather than as indicators of predictive accuracy or decision-support validity.
 
 The framework is intended to support, not replace, expert judgment in environmental health research.

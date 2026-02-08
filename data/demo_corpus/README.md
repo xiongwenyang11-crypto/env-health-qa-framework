@@ -1,8 +1,10 @@
 # Demonstration Corpus
 
-This folder contains a small demonstration corpus created solely to illustrate the retrieval, summarization, and uncertainty calibration pipeline.
+This folder contains a small **synthetic demonstration corpus** used solely to illustrate the retrieval, extractive summarization, and qualitative uncertainty calibration pipeline of the interpretable environmental health question-answering framework.
 
-The files do NOT represent the full set of studies analyzed in the accompanying manuscript.
-Texts are simplified or synthetic examples provided for reproducibility of the methods only.
+All texts in this folder are **synthetic or illustrative examples** created to mirror the structural characteristics of environmental health studies (e.g., study design, population, exposure, and outcomes).  
+They are provided exclusively for demonstrating method workflows, data structures, and reproducibility.
 
-Full-text source articles are not redistributed due to copyright restrictions.
+The files in this folder **do NOT represent real studies**, do NOT correspond to the literature corpus analyzed in the accompanying manuscript, and do NOT constitute factual evidence.
+
+Full-text source articles and real study texts are not redistributed due to copyright restrictions.

@@ -1,12 +1,13 @@
 """
 Evaluation aggregation and reporting utilities.
 
-This module provides:
-- aggregate_expert_scores: per-scenario mean factuality and interpretability
-- compute_expert_confidence_majority: majority vote for expert confidence labels
-- compute_uncertainty_alignment: system vs expert majority alignment (0/1)
-- build_report_table: Table-1-like report table
-- compute_summary_stats: mean ± SD for key metrics + alignment rate + mean κ
+Manuscript-aligned utilities for:
+- aggregate_expert_scores: per-scenario interpretability mean (SD) + optional factuality mean
+- compute_expert_consensus_factuality: majority vote (0/1/2 ordinal) per scenario
+- compute_expert_confidence_majority: majority vote (Low/Medium/High) per scenario
+- compute_uncertainty_alignment_kappa: weighted Cohen's κ (linear weights) between system vs expert consensus confidence
+- build_report_table: Table-2-like report table (query-level breakdown)
+- compute_summary_stats: descriptive summaries (mean ± SD, κ for confidence alignment)
 - export_outputs: export CSVs into outputs/ folder
 
 All functions are deterministic and reproducible.
@@ -14,12 +15,59 @@ All functions are deterministic and reproducible.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import cohen_kappa_score
+
+
+CONF_ORDER_DEFAULT = ["Low", "Medium", "High"]
+
+
+def _majority_vote(series: pd.Series) -> Any:
+    """
+    Majority vote for labels (deterministic).
+    Ties are resolved by pandas' idxmax order.
+    """
+    vc = series.value_counts(dropna=True)
+    if vc.empty:
+        return np.nan
+    return vc.idxmax()
+
+
+def compute_expert_consensus_factuality(
+    expert_ratings: pd.DataFrame,
+    *,
+    scenario_col: str = "scenario_id",
+    factuality_col: str = "factuality",
+    out_col: str = "factuality_consensus",
+) -> pd.DataFrame:
+    """
+    Compute expert-consensus factuality label per scenario via majority vote.
+
+    Manuscript alignment:
+    - factuality uses an ordinal 0–2 scale:
+        2 = fully consistent
+        1 = broadly consistent but incomplete
+        0 = incorrect/unsupported
+
+    Returns:
+    - scenario_id
+    - factuality_consensus
+    """
+    for c in (scenario_col, factuality_col):
+        if c not in expert_ratings.columns:
+            raise KeyError(f"Missing column '{c}' in expert_ratings.")
+
+    cons = (
+        expert_ratings.groupby(scenario_col)[factuality_col]
+        .apply(_majority_vote)
+        .reset_index()
+        .rename(columns={factuality_col: out_col})
+    )
+    return cons
 
 
 def aggregate_expert_scores(
@@ -30,12 +78,20 @@ def aggregate_expert_scores(
     interpretability_col: str = "interpretability",
 ) -> pd.DataFrame:
     """
-    Aggregate expert ratings per scenario (mean factuality and mean interpretability).
+    Aggregate expert ratings per scenario.
 
-    Returns a DataFrame with:
+    Manuscript alignment:
+    - Interpretability is summarized as mean (SD) across experts (5-point Likert).
+    - Factuality is ordinal; mean is optional descriptive context, but consensus label
+      should be used for query-level reporting.
+
+    Returns:
     - scenario_id
-    - factuality_mean
     - interpretability_mean
+    - interpretability_sd
+    - factuality_mean (optional descriptive)
+    - factuality_sd  (optional descriptive)
+    - n_experts
     """
     for c in (scenario_col, factuality_col, interpretability_col):
         if c not in expert_ratings.columns:
@@ -44,23 +100,15 @@ def aggregate_expert_scores(
     agg = (
         expert_ratings.groupby(scenario_col)
         .agg(
-            factuality_mean=(factuality_col, "mean"),
+            n_experts=(interpretability_col, "count"),
             interpretability_mean=(interpretability_col, "mean"),
+            interpretability_sd=(interpretability_col, lambda x: float(np.std(x, ddof=1)) if len(x) > 1 else 0.0),
+            factuality_mean=(factuality_col, "mean"),
+            factuality_sd=(factuality_col, lambda x: float(np.std(x, ddof=1)) if len(x) > 1 else 0.0),
         )
         .reset_index()
     )
     return agg
-
-
-def _majority_vote(series: pd.Series) -> str:
-    """
-    Majority vote for categorical labels.
-    Ties are resolved by pandas' idxmax order (deterministic).
-    """
-    vc = series.value_counts(dropna=True)
-    if vc.empty:
-        return ""
-    return str(vc.idxmax())
 
 
 def compute_expert_confidence_majority(
@@ -90,22 +138,33 @@ def compute_expert_confidence_majority(
     return maj
 
 
-def compute_uncertainty_alignment(
+def compute_uncertainty_alignment_kappa(
     *,
     system_confidence_df: pd.DataFrame,
     expert_majority_df: pd.DataFrame,
     scenario_col: str = "scenario_id",
     system_conf_col: str = "system_confidence",
     expert_conf_col: str = "expert_confidence_majority",
-) -> pd.DataFrame:
+    conf_order: Sequence[str] = CONF_ORDER_DEFAULT,
+    weights: str = "linear",
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Compute uncertainty alignment between system confidence and expert majority confidence.
+    Compute uncertainty alignment between system confidence and expert consensus confidence
+    using weighted Cohen's κ (linear weights), consistent with the manuscript.
 
     Returns:
-    - scenario_id
-    - system_confidence
-    - expert_confidence_majority
-    - aligned (0/1)
+    1) merged_table: per-scenario side-by-side comparison
+       - scenario_id
+       - system_confidence
+       - expert_confidence_majority
+
+    2) alignment_stats: single-row DataFrame with:
+       - kappa_weighted
+       - n_items
+
+    Notes
+    -----
+    This κ captures ordinal agreement/interpretability alignment rather than probabilistic calibration.
     """
     for c in (scenario_col, system_conf_col):
         if c not in system_confidence_df.columns:
@@ -115,92 +174,112 @@ def compute_uncertainty_alignment(
             raise KeyError(f"Missing column '{c}' in expert_majority_df.")
 
     merged = system_confidence_df.merge(expert_majority_df, on=scenario_col, how="left")
-    merged["aligned"] = (merged[system_conf_col] == merged[expert_conf_col]).astype(int)
 
-    return merged[[scenario_col, system_conf_col, expert_conf_col, "aligned"]]
+    # Encode ordinal labels deterministically
+    mapping = {v: i for i, v in enumerate(conf_order)}
+    sys_codes = merged[system_conf_col].map(mapping)
+    exp_codes = merged[expert_conf_col].map(mapping)
+
+    mask = (~pd.isna(sys_codes)) & (~pd.isna(exp_codes))
+    n_items = int(mask.sum())
+
+    if n_items == 0:
+        kappa = float("nan")
+    else:
+        kappa = float(cohen_kappa_score(sys_codes[mask], exp_codes[mask], weights=weights))
+
+    stats = pd.DataFrame([{"kappa_weighted": kappa, "n_items": n_items, "weights": weights}])
+    return merged[[scenario_col, system_conf_col, expert_conf_col]], stats
 
 
 def build_report_table(results_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Build a Table-1-like report table from a merged results dataframe.
+    Build a Table-2-like report table from a merged results dataframe.
 
     Expected columns (minimum):
-    - scenario_id, pollutant, outcome, query
+    - query_instance_id OR scenario_id (at least one)
+    - pollutant, outcome, query
     - k, precision_at_k
-    - factuality_mean, interpretability_mean
+    - factuality_consensus
+    - interpretability_mean, interpretability_sd
     - system_confidence
     - expert_confidence_majority
-    - aligned
 
     Returns a sorted report DataFrame.
     """
+    # Support either query_instance_id (18 instances) or scenario_id (6 topics demo).
+    id_col = "query_instance_id" if "query_instance_id" in results_df.columns else "scenario_id"
+
     required = [
-        "scenario_id",
+        id_col,
         "pollutant",
         "outcome",
         "query",
         "k",
         "precision_at_k",
-        "factuality_mean",
+        "factuality_consensus",
         "interpretability_mean",
+        "interpretability_sd",
         "system_confidence",
         "expert_confidence_majority",
-        "aligned",
     ]
     missing = [c for c in required if c not in results_df.columns]
     if missing:
         raise KeyError(f"Missing required columns in results_df: {missing}")
 
     report = results_df[required].copy()
-    report = report.sort_values("scenario_id")
+    report = report.sort_values(id_col)
     return report
 
 
 def compute_summary_stats(
     *,
     results: pd.DataFrame,
-    kappa_factuality: Optional[pd.DataFrame] = None,
-    kappa_interpretability: Optional[pd.DataFrame] = None,
+    alignment_stats: Optional[pd.DataFrame] = None,
     precision_col: str = "precision_at_k",
-    factuality_col: str = "factuality_mean",
-    interpretability_col: str = "interpretability_mean",
-    alignment_col: str = "aligned",
+    interpretability_mean_col: str = "interpretability_mean",
 ) -> pd.DataFrame:
     """
-    Compute summary statistics (mean ± SD) and optionally include mean kappa values.
+    Compute descriptive summary statistics.
+
+    Manuscript alignment:
+    - Precision@k: mean ± SD across query instances
+    - Interpretability: mean ± SD across query instances (using per-instance mean ratings)
+    - Uncertainty alignment: report weighted κ (linear weights) from alignment_stats
 
     Returns a single-row DataFrame.
     """
-    for c in (precision_col, factuality_col, interpretability_col, alignment_col):
+    for c in (precision_col, interpretability_mean_col):
         if c not in results.columns:
             raise KeyError(f"Missing column '{c}' in results.")
 
-    def _mean_sd(x: pd.Series):
+    def _mean_sd(x: pd.Series) -> Tuple[float, float]:
         return float(x.mean()), float(x.std(ddof=1))
 
-    factuality_mean, factuality_sd = _mean_sd(results[factuality_col])
     precision_mean, precision_sd = _mean_sd(results[precision_col])
-    interp_mean, interp_sd = _mean_sd(results[interpretability_col])
-    alignment_rate = float(results[alignment_col].mean())
+    interp_mean, interp_sd = _mean_sd(results[interpretability_mean_col])
 
-    k_f = float("nan")
-    k_i = float("nan")
-    if kappa_factuality is not None and "kappa" in kappa_factuality.columns:
-        k_f = float(np.nanmean(kappa_factuality["kappa"].to_numpy()))
-    if kappa_interpretability is not None and "kappa" in kappa_interpretability.columns:
-        k_i = float(np.nanmean(kappa_interpretability["kappa"].to_numpy()))
+    kappa = float("nan")
+    n_items = float("nan")
+    weights = ""
+    if alignment_stats is not None and len(alignment_stats) > 0:
+        kappa = float(alignment_stats.loc[0, "kappa_weighted"])
+        n_items = float(alignment_stats.loc[0, "n_items"])
+        weights = str(alignment_stats.loc[0, "weights"])
 
-    out = pd.DataFrame([{
-        "factuality_mean": factuality_mean,
-        "factuality_sd": factuality_sd,
-        "precision_at_k_mean": precision_mean,
-        "precision_at_k_sd": precision_sd,
-        "interpretability_mean": interp_mean,
-        "interpretability_sd": interp_sd,
-        "uncertainty_alignment_rate": alignment_rate,
-        "kappa_factuality_pairwise_mean": k_f,
-        "kappa_interpretability_pairwise_mean": k_i,
-    }])
+    out = pd.DataFrame(
+        [
+            {
+                "precision_at_k_mean": precision_mean,
+                "precision_at_k_sd": precision_sd,
+                "interpretability_mean": interp_mean,
+                "interpretability_sd": interp_sd,
+                "confidence_alignment_kappa_weighted": kappa,
+                "confidence_alignment_n_items": n_items,
+                "confidence_alignment_weights": weights,
+            }
+        ]
+    )
     return out
 
 
@@ -209,8 +288,7 @@ def export_outputs(
     out_dir: Path,
     report_table: pd.DataFrame,
     summary_stats: pd.DataFrame,
-    kappa_factuality: Optional[pd.DataFrame] = None,
-    kappa_interpretability: Optional[pd.DataFrame] = None,
+    confidence_alignment_table: Optional[pd.DataFrame] = None,
 ) -> None:
     """
     Export outputs as CSV files into out_dir.
@@ -223,7 +301,5 @@ def export_outputs(
     report_table.to_csv(out_dir / "demo_report_table.csv", index=False)
     summary_stats.to_csv(out_dir / "demo_summary_stats.csv", index=False)
 
-    if kappa_factuality is not None:
-        kappa_factuality.to_csv(out_dir / "demo_kappa_factuality.csv", index=False)
-    if kappa_interpretability is not None:
-        kappa_interpretability.to_csv(out_dir / "demo_kappa_interpretability.csv", index=False)
+    if confidence_alignment_table is not None:
+        confidence_alignment_table.to_csv(out_dir / "demo_confidence_alignment_table.csv", index=False)

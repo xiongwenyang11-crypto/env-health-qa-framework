@@ -1,102 +1,165 @@
 Interpretable Environmental Health Question-Answering Framework
+===============================================================
 
-This repository provides a proof-of-concept implementation of an interpretable, evidence-based question-answering framework for environmental health research.
-The system is designed to support transparent synthesis of pollutant–health evidence from scientific literature, with explicit uncertainty representation and full citation traceability.
+This repository provides a proof-of-concept implementation of an interpretable,
+evidence-centered question-answering framework for environmental health research.
 
-The code accompanies an academic manuscript entitled
-“Development and Evaluation of a Transparent AI Framework for Evidence-Centered Question Answering in Environmental Health Research.”
+The framework is designed to support transparent synthesis of pollutant–health
+evidence from scientific literature, with explicit uncertainty representation
+and full traceability to source studies.
 
-Overview
+The code accompanies the academic manuscript:
 
-Environmental health evidence is often dispersed across heterogeneous studies and presented in formats that are difficult for non-specialists to interpret.
-This framework explores how AI-inspired retrieval and reasoning techniques can be combined with structured knowledge representation to support:
+“Development and Evaluation of a Transparent AI Framework for Evidence-Centered
+Question Answering in Environmental Health Research.”
 
-Natural-language question answering on pollutant–health relationships
+---
 
-Evidence-grounded answer generation
+## Overview
 
-Explicit uncertainty calibration
+Environmental health evidence is often dispersed across heterogeneous studies,
+disciplines, and exposure contexts, making synthesis and inspection challenging.
+This framework explores how AI-inspired retrieval and reasoning techniques can be
+combined with structured, transparent workflows to support:
 
-Transparent linkage between answers and source literature
+- Natural-language question answering on pollutant–health relationships  
+- Evidence-centered, citation-grounded responses  
+- Explicit and interpretable representation of uncertainty  
+- Transparent linkage between system outputs and source literature  
 
-Rather than relying on black-box large language model outputs, the system emphasizes interpretability, reproducibility, and traceability as first-class design principles.
+Rather than relying on end-to-end or black-box large language model outputs, the
+framework prioritizes **interpretability, reproducibility, and evidence
+traceability** as first-class design principles.
 
-This repository implements a lightweight, non-generative prototype intended to demonstrate methodological feasibility rather than a production-level decision-support system.
+The repository implements a lightweight, non-generative prototype intended to
+demonstrate **methodological feasibility** rather than a production-level
+decision-support system.
 
-Framework Components
+---
 
-The repository is organized to reflect the main methodological components of the framework:
+## Framework Components
 
-Evidence Retrieval
+The repository structure reflects the main methodological components described
+in the manuscript:
 
-TF–IDF vectorization and cosine similarity are used to retrieve relevant literature snippets in response to a query.
+### Evidence Retrieval
 
-Extractive Summarization
+Relevant literature is retrieved using TF–IDF vectorization and cosine
+similarity. Queries are mapped to a ranked list of candidate studies together
+with transparent similarity scores and study metadata.
 
-Key sentences exhibiting lexical overlap with query terms are selected to form concise, evidence-based summaries.
+### Extractive Summarization
 
-Uncertainty Calibration
+Retrieved documents are summarized using a **query-aware extractive strategy**.
+Each document is split into sentences, and sentence-level relevance to the query
+is scored using TF–IDF cosine similarity.  
+For each retrieved document, **a single highest-scoring sentence (n = 1 per
+document)** is selected, ensuring a one-to-one correspondence between summarized
+statements and source studies.
 
-Retrieval similarity scores are transformed into qualitative confidence levels (Low / Medium / High) using a sigmoid-based heuristic.
+This design prioritizes traceability and avoids over-synthesis across
+heterogeneous evidence sources.
 
-Evaluation
+### Uncertainty Representation
 
-Scripts are provided to compute citation precision, inter-rater agreement (Cohen’s κ), and interpretability-related statistics as reported in the accompanying manuscript (Table 1).
+Uncertainty is represented using a qualitative confidence indicator
+(**Low / Medium / High**) derived from retrieval-based evidence support signals.
 
-Repository Structure
+Specifically:
+- Similarity scores from the top-k retrieved documents are min–max normalized
+- Normalized scores are aggregated using their arithmetic mean
+- Fixed thresholds, defined prior to evaluation, are applied to assign
+  qualitative confidence levels
+
+These labels are intended as interpretable communicative cues rather than
+probabilistic estimates of correctness or causal certainty.
+
+### Evaluation
+
+The repository includes scripts and notebooks to reproduce the evaluation
+workflow reported in the manuscript, including:
+
+- Citation precision@k  
+- Expert-assessed factual consistency and interpretability  
+- Inter-rater agreement (pairwise Cohen’s κ)  
+- Alignment between system-assigned uncertainty labels and expert consensus
+  confidence (weighted Cohen’s κ with linear weights)
+
+Evaluation focuses on **internal consistency, interpretability, and transparency**
+rather than benchmark performance or generalizable accuracy.
+
+---
+
+## Repository Structure
+
 env-health-qa-framework/
 │
 ├── data/
-│   └── demo_corpus/        # Synthetic demonstration corpus (not full literature set)
+│ ├── demo_corpus/ # Synthetic demonstration studies
+│ └── demo_evaluation/ # Synthetic evaluation tables
 │
-├── retrieval/              # TF–IDF indexing and similarity-based search
+├── retrieval/ # TF–IDF indexing and cosine-similarity search
 │
-├── summarization/          # Extractive summarization methods
+├── summarization/ # Query-aware extractive summarization
 │
-├── uncertainty/            # Uncertainty calibration utilities
+├── uncertainty/ # Qualitative uncertainty representation utilities
 │
-├── evaluation/             # Evaluation metrics and statistical scripts
+├── evaluation/ # Evaluation metrics and agreement analysis
 │
-├── notebooks/              # Jupyter notebooks demonstrating the full pipeline
+├── notebooks/ # End-to-end demo and evaluation notebooks
 │
-├── docs/                   # Additional methodological documentation
-│
-├── requirements.txt        # Python dependencies
+├── requirements.txt # Python dependencies
 └── README.md
 
-Data Availability
+---
 
-This repository includes a synthetic demonstration corpus intended solely to illustrate the retrieval, reasoning, and evaluation pipeline.
+## Data Availability
 
-Due to copyright restrictions, full-text source articles used in the study are not redistributed.
-No copyrighted full-text articles, proprietary databases, or web-scraped content are included in this repository.
-The demonstration files mirror the structure and annotations of the original studies but do not constitute a complete dataset and should not be used for downstream statistical inference.
+This repository includes **synthetic demonstration data** intended solely to
+illustrate the retrieval, summarization, uncertainty, and evaluation workflows.
 
-Reproducibility
+Due to copyright restrictions, full-text source articles used in the study are
+not redistributed. No copyrighted full-text articles, proprietary databases, or
+web-scraped content are included.
 
-The provided scripts and notebooks allow users to:
+The demonstration files mirror the structure and annotation schema of the
+original studies but do not constitute a complete dataset and should not be used
+for downstream statistical inference.
 
-Run the retrieval and extractive summarization pipeline on example inputs
+---
 
-Reproduce the qualitative uncertainty calibration behavior
+## Reproducibility
 
-Replicate the evaluation metrics reported in the accompanying manuscript
+All components are implemented using standard Python libraries and deterministic
+procedures. The provided notebooks allow users to:
 
-All components are implemented using standard Python libraries and are organized to support transparent inspection, replication, and extension of the proof-of-concept workflow.
+- Run the retrieval and extractive summarization pipeline on example queries  
+- Inspect evidence traceability and uncertainty representation  
+- Reproduce the evaluation metrics reported in the accompanying manuscript  
 
-Intended Use
+The modular design supports transparent inspection, replication, and future
+methodological extension.
 
-This codebase is intended for research and educational purposes only.
-It is not designed to replace expert judgment or to support clinical, regulatory, or public health decision-making.
+---
 
-The framework is provided as a methodological demonstration and should not be interpreted as an automated risk assessment or policy recommendation system.
+## Intended Use
 
-Citation
+This codebase is intended for **research and educational purposes only**.
+
+It is not designed to replace expert judgment or to support clinical,
+regulatory, or public health decision-making. The framework should not be
+interpreted as an automated risk assessment or policy recommendation system.
+
+---
+
+## Citation
 
 If you use this code in your research, please cite the accompanying manuscript:
 
-Manuscript citation to be added upon publication.
+*Manuscript citation to be added upon publication.*
 
-License
+---
+
+## License
 
 This project is released under the MIT License.
